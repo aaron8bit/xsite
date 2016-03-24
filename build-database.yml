@@ -1,0 +1,27 @@
+---
+- hosts: localhost
+  connection: local
+
+  tasks:
+  - name: Get RDS Info
+    local_action: rds command=facts region="{{ aja_region }}"
+                  instance_name="{{ aja_rds_instance }}"
+    register: rds
+  #- debug: var=rds
+    until: rds.instance.status == "available"
+    retries: 30
+    delay: 60
+
+  #######################################################
+  # There is a bug in boto 2.20 included with ubuntu
+  # had to upgrade to 2.39 before this would work
+  #   pip install --upgrade --user boto
+  #######################################################
+  - name: Register in Route53
+    route53:
+      command: create
+      zone: exscrument.com
+      record: db01.exscrument.com
+      type: CNAME
+      value: "{{ rds.instance.endpoint }}"
+      overwrite: yes

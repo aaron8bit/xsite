@@ -1,0 +1,54 @@
+---
+- hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Stop NGINX Service
+      service: name=nginx state=stopped
+
+    - name: Wait NGINX Drained
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80 state=drained
+
+- hosts: webserver
+  become: true
+  tasks:
+    - name: Stop httpd Service
+      service: name=httpd state=stopped
+
+    - name: Wait httpd Stopped
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80 state=stopped
+
+- hosts: localhost
+  connection: local
+  tasks:
+    - name: Reboot Database - THIS CAN TAKE UP TO 10 MINUTES
+      rds:
+        region: "{{ project_region }}"
+        command: reboot
+        instance_name: "{{ rds_instance_name }}"
+        wait: true
+
+    - name: Verify Database is Available
+      local_action: rds command=facts region="{{ project_region }}"
+                    instance_name="{{ rds_instance_name }}"
+      register: rds
+      until: rds.instance.status == "available"
+      retries: 20
+      delay: 60
+
+- hosts: webserver
+  become: true
+  tasks:
+    - name: Start httpd Service
+      service: name=httpd state=started
+
+    - name: Wait httpd Started
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80
+
+- hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Start NGINX Service
+      service: name=nginx state=started
+
+    - name: Wait NGINX Started
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80

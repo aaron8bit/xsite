@@ -1,0 +1,99 @@
+---
+# launch-vpc.yml
+- hosts: localhost
+
+  tasks:
+
+    - name: Get Existing VPC Facts
+      ec2_vpc_net_facts:
+        region: "{{ project_region }}"
+      register: vpclist
+    #- debug: msg="{{ vpclist['vpcs'] }}"
+
+    - name: Verify VPC for "{{ vpc_cidr_block }}" Does Not Exist
+      fail: msg="VPC Already Exists"
+      when: vpc_cidr_block == item.cidr_block
+      with_items: "{{ vpclist.vpcs }}"
+
+    - name: Create VPC
+      ec2_vpc:
+        region: "{{ project_region }}"
+        state: present
+        cidr_block: "{{ vpc_cidr_block }}"
+        resource_tags: "{{ vpc_resource_tags }}"
+        internet_gateway: "{{ vpc_internet_gateway }}"
+        subnets: "{{ subnets }}"
+        route_tables: "{{ vpc_route_tables }}"
+        wait: true
+      register: vpc
+    #- debug: msg="{{ vpc }}"
+
+    # If you rebuild a VPC that was previously deleted, make sure there
+    # is no existing subnet group with the same name, currently this has
+    # to be cleaned up manualy and the error presented is not useful
+    - name: Create RDS Subnet Group
+      rds_subnet_group:
+        region: "{{ project_region }}"
+        state: present
+        name: "{{ vpc_rds_subnet_group }}"
+        description: "{{ project_region }} RDS Subnet Group"
+        subnets:
+          - "{{ lookup('aws_subnet_ids_from_names', (project_region, '{{project_name}}-database-1')) }}"
+          - "{{ lookup('aws_subnet_ids_from_names', (project_region, '{{project_name}}-database-2')) }}"
+      register: rdsgroup
+
+# I was going to use this to feed launch-ec2 but lookup scripts
+# are much much better
+#    - name: Write out a temporary file for mapping subnet to id
+#      template: src=templates/vpc-proj-env-subnets.j2 dest=vars/{{ project_name }}-{{ project_environment }}-subnets.yml
+
+    #- debug: msg="{{ vpc_security_groups }}"
+    - name: Create EC2 Security Groups
+      ec2_group:
+        name: "{{ item.security_group_name }}"
+        description: "{{ item.security_group_name }}"
+        #vpc_id: "{{ vpc.vpc.id }}"
+        vpc_id: "{{ lookup('aws_vpc_id_from_name', (project_region, vpc_name)) }}"
+        region: "{{ project_region }}"
+        rules: "{{ item.security_group_rule }}"
+      with_items: "{{ vpc_security_groups }}"
+      register: secgroups
+    #- debug: msg="{{ secgroups }}"
+
+# NOT WORKING, NEED TO BUILD A VPC SG TO CONNECT APP TIER TO RDS
+# WRONG MODULE???
+    # - name: Create RDS Security Groups
+    #   ec2_group:
+    #     name: "{{ project_name }}-rds"
+    #     description: "{{ project_name }}-rds"
+    #     #vpc_id: "{{ vpc.vpc.id }}"
+    #     vpc_id: "{{ lookup('aws_vpc_id_from_name', (project_region, vpc_name)) }}"
+    #     region: "{{ project_region }}"
+    #     rules:
+    #     - proto: tcp
+    #       from_port: 3306
+    #       to_port: 3306
+    #       cidr_ip: "{{ lookup('aws_secgroup_ids_from_names', (project_region, 'sg-1940d461')) }}"
+    #   register: secgroupsrds
+    #- debug: msg="{{ secgroups2 }}"
+
+#    - name: Create Route Table
+#      ec2_vpc:
+#        region: "{{ project_region }}"
+#        cidr_block: "{{ vpc_cidr_block }}"
+#        resource_tags: "{{ item.0.resource_tags }}"
+#        internet_gateway: "{{ item.0.internet_gateway }}"
+#        subnets: "{{ item.0.subnets }}"
+#        route_tables:
+#          - subnets: "{{ item.0.subnets | get_subnets('Tier', 'public', 'cidr') }}"
+#            routes:
+#              - dest: 0.0.0.0/0
+#                gw: igw
+#          - subnets: "{{ item.0.subnets | get_subnets('Tier', 'private', 'cidr') }}"
+#            routes:
+#              - dest: 0.0.0.0/0
+#                gw: "{{ item.1.instance_ids[0] }}"
+#      with_together:
+#        - "{{ vpc_list }}"
+#        - "{{ ec2_out.results }}"
+#      register: ec2_vpc_out

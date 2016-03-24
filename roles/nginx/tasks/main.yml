@@ -1,0 +1,34 @@
+---
+# tasks file for nginx
+- name: install tools
+  yum: name={{item}} state=present update_cache=yes
+  with_items:
+    - python27-httplib2
+
+- name: Install NGINX
+  yum: name=nginx state=present update_cache=yes
+
+- name: Configure NGINX
+  template: src=nginx.conf.j2 dest=/etc/nginx/conf.d/{{ item.key }}.conf mode=0644
+  with_dict: '{{ sites }}'
+  notify: Restart NGINX
+
+  # wow that got complicated...
+- name: Get Active Config Files
+  shell: ls -1 /etc/nginx/conf.d/*.conf | xargs -n1 basename | sed -r 's/.conf$//'
+  register: active
+
+- name: Remove Uncontrolled Config Files
+  file: path=/etc/nginx/conf.d/{{ item }}.conf state=absent
+  with_items: '{{ active.stdout_lines }}'
+  when: item not in sites
+  notify: Restart NGINX
+
+  # this is a bit of a hack, I need to change/remove/comment a bunch of default
+  # configuration lines, decided to fully manage entire file
+- name: Fix Default nginx.conf
+  copy: src=nginx.conf dest=/etc/nginx/nginx.conf mode=0644
+  notify: Restart NGINX
+
+- name: Start NGINX Service
+  service: name=nginx state=started enabled=yes

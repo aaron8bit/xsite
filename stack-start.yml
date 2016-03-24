@@ -1,0 +1,18 @@
+---
+- hosts: webserver
+  become: true
+  tasks:
+    - name: Start httpd Service
+      service: name=httpd state=started
+
+    - name: Wait httpd Started
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80
+
+- hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Start NGINX Service
+      service: name=nginx state=started
+
+    - name: Wait NGINX Started
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80

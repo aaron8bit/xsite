@@ -1,0 +1,176 @@
+---
+# Definition of VPC intended for use with launch-vpc.yml
+
+project_name: xsite
+project_environment: test
+project_region: us-east-1
+project_az1: "{{ project_region }}e"
+project_az2: "{{ project_region }}d"
+
+ec2_ssh_key_name: AJA-Key
+
+vpc_name: "{{ project_name }}-vpc"
+vpc_cidr_block: 10.1.0.0/16
+
+vpc_resource_tags:
+  Name: "{{ vpc_name }}"
+  Environment: "{{ project_environment }}"
+  Project: "{{ project_name }}"
+
+vpc_internet_gateway: true
+
+subnets:
+  - cidr: 10.1.1.0/24
+    az: "{{ project_az1 }}"
+    resource_tags:
+      Name: "{{ project_name }}-dmz-1"
+      Environment: "{{ project_environment }}"
+      Tier: public
+      Project: "{{ project_name }}"
+
+  - cidr: 10.1.2.0/24
+    az: "{{ project_az2 }}"
+    resource_tags:
+      Name: "{{ project_name }}-dmz-2"
+      Environment: "{{ project_environment }}"
+      Tier: public
+      Project: "{{ project_name }}"
+
+  - cidr: 10.1.3.0/24
+    az: "{{ project_az1 }}"
+    resource_tags:
+      Name: "{{ project_name }}-internal-1"
+      Environment: "{{ project_environment }}"
+      Tier: private
+      Project: "{{ project_name }}"
+
+  - cidr: 10.1.4.0/24
+    az: "{{ project_az2 }}"
+    resource_tags:
+      Name: "{{ project_name }}-internal-2"
+      Environment: "{{ project_environment }}"
+      Tier: private
+      Project: "{{ project_name }}"
+
+  - cidr: 10.1.5.0/24
+    az: "{{ project_az1 }}"
+    resource_tags:
+      Name: "{{ project_name }}-database-1"
+      Environment: "{{ project_environment }}"
+      Tier: private
+      Project: "{{ project_name }}"
+
+  - cidr: 10.1.6.0/24
+    az: "{{ project_az2 }}"
+    resource_tags:
+      Name: "{{ project_name }}-database-2"
+      Environment: "{{ project_environment }}"
+      Tier: private
+      Project: "{{ project_name }}"
+
+vpc_rds_subnet_group: "{{ project_name }}-rds"
+vpc_rds_subnet_group_subnets:
+  - "{{ project_name }}-database-1"
+  - "{{ project_name }}-database-2"
+
+vpc_security_groups:
+
+  - security_group_name: "{{ project_name }}-http-internet"
+    security_group_rule:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: 0.0.0.0/0
+
+  - security_group_name: "{{ project_name }}-http-access"
+    security_group_rule:
+    - proto: tcp
+      from_port: 80
+      to_port: 80
+      cidr_ip: "{{ vpc_cidr_block }}"
+
+  - security_group_name: "{{ project_name }}-ssh-internet"
+    security_group_rule:
+    - proto: tcp
+      from_port: 22
+      to_port: 22
+      cidr_ip: 0.0.0.0/0
+
+  - security_group_name: "{{ project_name }}-rds-access"
+    security_group_rule:
+    - proto: tcp
+      from_port: 3306
+      to_port: 3306
+      cidr_ip: "{{ vpc_cidr_block }}"
+
+vpc_internal_sg: "{{ project_name }}-rds-internal"
+
+vpc_route_tables:
+  - subnets:
+    - "10.1.1.0/24"
+    - "10.1.2.0/24"
+    - "10.1.3.0/24"
+    - "10.1.4.0/24"
+    routes:
+    - dest: 0.0.0.0/0
+      gw: igw
+
+
+#######################################################################
+
+# define the instances that make up the system, these are used in
+# with_items loops below
+
+dns_tld: "exscrument.com"
+dns_frontend: "www.{{ dns_tld }}"
+dns_backend_list:
+
+  - hostname: "{{ project_name }}-lb01"
+
+instance_list:
+
+  - name: "{{ project_name }}-loadbalancer-1"
+    hostname: "{{ project_name }}-lb01"
+    domain: "{{ dns_tld }}"
+    subnet: "{{ project_name }}-dmz-1"
+    groups:
+      - "{{ project_name }}-ssh-internet"
+      - "{{ project_name }}-http-internet"
+    tags:
+      Name: "{{ project_name }}-lb01"
+      Tier: loadbalancer
+      Project: "{{ project_name }}"
+
+  - name: "{{ project_name }}-application-1"
+    hostname: "{{ project_name }}-app01"
+    domain: "{{ dns_tld }}"
+    subnet: "{{ project_name }}-internal-1"
+    groups:
+      - "{{ project_name }}-ssh-internet"
+      - "{{ project_name }}-http-access"
+      - "{{ project_name }}-http-internet"
+    tags:
+      Name: "{{ project_name }}-app01"
+      Tier: application
+      Project: "{{ project_name }}"
+
+  - name: "{{ project_name }}-application-2"
+    hostname: "{{ project_name }}-app02"
+    domain: "{{ dns_tld }}"
+    subnet: "{{ project_name }}-internal-2"
+    groups:
+      - "{{ project_name }}-ssh-internet"
+      - "{{ project_name }}-http-access"
+      - "{{ project_name }}-http-internet"
+    tags:
+      Name: "{{ project_name }}-app02"
+      Tier: application
+      Project: "{{ project_name }}"
+
+# set some database specific items, encrypt this later
+rds_instance_name: "{{ project_name }}-database-1"
+rds_instance_hostname: "{{ project_name }}-db01"
+rds_instance_domain: "{{ dns_tld }}"
+database_name: "{{ project_name }}db"
+database_user: "{{ vault_database_user }}"
+database_pass: "{{ vault_database_pass }}"

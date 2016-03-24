@@ -1,0 +1,27 @@
+---
+
+# tasks file for demo
+- name: Install Webserver Components
+  yum: name={{item}} state=present update_cache=yes
+  with_items:
+    - mod_wsgi-python27
+    - python27-pip
+    - python27-virtualenv
+    - MySQL-python27
+    - mysql56
+
+- name: Copy Application Files
+  copy: src=demo/app/ dest=/var/www/demo mode=0755
+  notify: Restart httpd
+
+- name: Configure demo.wsqi File
+  template: src=roles/demo/templates/demo.wsgi.j2 dest=/var/www/demo/demo.wsgi mode=0755
+  notify: Restart httpd
+
+- name: Copy httpd Configuration File
+  copy: src=demo/demo.conf dest=/etc/httpd/conf.d/demo.conf mode=0755
+  notify: Restart httpd
+
+- name: Setup Python Virtual Environment
+  pip: requirements=/var/www/demo/requirements.txt virtualenv=/var/www/demo/.venv
+  notify: Restart httpd

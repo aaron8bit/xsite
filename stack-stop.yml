@@ -1,0 +1,19 @@
+---
+- hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Stop NGINX Service
+      service: name=nginx state=stopped
+
+    - name: Wait NGINX Drained
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80 state=drained
+
+- hosts: webserver
+  become: true
+  tasks:
+    - name: Stop httpd Service
+      service: name=httpd state=stopped
+
+    - name: Wait httpd Stopped
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80 state=stopped
+

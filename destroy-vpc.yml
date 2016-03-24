@@ -1,0 +1,17 @@
+---
+# launch-vpc.yml
+- hosts: localhost
+
+  tasks:
+
+    - name: Destroy VPC
+      ec2_vpc:
+        region: "{{ project_region }}"
+        state: absent
+        cidr_block: "{{ vpc_cidr_block }}"
+        resource_tags: "{{ vpc_resource_tags }}"
+        internet_gateway: yes
+        subnets: "{{ subnets }}"
+        wait: true
+      register: vpc
+    - debug: msg="{{ vpc }}"

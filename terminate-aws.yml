@@ -1,0 +1,29 @@
+---
+- name: Terminate EC2 Instances
+  hosts: terminate_ec2
+
+# THE RDS PIECE IS PRACTICALLY HARD CODED TO WHATEVER THE CURRENT
+# GLOBAL VARIABLE IS SET TO, DANGEROUS AND ANNOYING
+
+  # TERMINATE SERVERS
+  tasks:
+    - name: Get EC2 Instance Metadata
+      ec2_facts:
+    #- debug: msg="{{ ansible_ec2_instance_id }}"
+
+    - name : Terminate EC2 Instance
+      local_action:
+        module: ec2
+        state: 'absent'
+        region: "{{ aja_region }}"
+        instance_ids: "{{ ansible_ec2_instance_id }}"
+
+
+- name: Terminate RDS Instances
+  hosts: localhost
+  tasks:
+    - name: Terminate Database
+      rds:
+        region: "{{ aja_region }}"
+        command: delete
+        instance_name: "{{ aja_rds_instance }}"

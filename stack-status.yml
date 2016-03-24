@@ -1,0 +1,29 @@
+---
+
+- hosts: loadbalancer
+  become: true
+  tasks:
+    - name: Verify NGINX Status (ssh)
+      command: service nginx status
+
+    - name: Verify NGINX is Listening
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80 timeout=3
+
+- hosts: webserver
+  become: true
+  tasks:
+    - name: Verify httpd Status (ssh)
+      command: service httpd status
+
+    - name: Verify httpd is Listening
+      wait_for: host={{ ansible_eth0.ipv4.address }} port=80 timeout=3
+
+- hosts: localhost
+  connection: local
+
+  tasks:
+    - name: Verify Database is Available (Direct AWS Connection)
+      local_action: rds command=facts region="{{ project_region }}"
+                    instance_name="{{ rds_instance_name }}"
+      register: rds
+    #- debug: var=rds

@@ -1,0 +1,130 @@
+---
+- hosts: localhost
+  connection: local
+
+  # LAUNCH SERVERS
+  tasks:
+
+    # Launch the database first because it takes FOREVER
+    - name: Launch Database (No Waiting)
+      vars:
+        mygroup: "{{ project_name }}-rds-access"
+
+      rds:
+        region: "{{ project_region }}"
+        subnet: "{{ vpc_rds_subnet_group }}"
+        vpc_security_groups: "{{ lookup('aws_secgroup_ids_from_names', (project_region, mygroup)) }}"
+        command: create
+        instance_name: "{{ rds_instance_name }}"
+        db_engine: MySQL
+        size: 5
+        instance_type: db.t2.micro
+        db_name: "{{ database_name }}"
+        username: "{{ database_user }}"
+        password: "{{ database_pass }}"
+        wait: false
+        ######################################################
+        # RDS tags function in not in boto 2.20 that comes with
+        # ubuntu 14, I think it was added in 2.26, working in 2.39
+        #   pip install --upgrade --user boto
+        ######################################################
+        tags:
+          Name: "{{ rds_instance_name }}"
+          Tier: database
+          Project: aja
+      register: rdsout
+    #- debug: msg="{{ rdsout }}"
+
+    - name: Launch EC2 Instances
+      ec2:
+        region: "{{ project_region }}"
+        key_name: "{{ ec2_ssh_key_name }}"
+        vpc_subnet_id: "{{ lookup('aws_subnet_ids_from_names', (project_region, item.subnet)) }}"
+        group: "{{ item.groups }}"
+        instance_type: t2.micro
+        image: ami-8fcee4e5
+        user_data: |
+                    #!/bin/bash
+                    sudo hostname {{ item.hostname }}.{{ item.domain }}
+                    #sudo yum update -y
+                    #sleep 10
+                    #sudo shutdown -r now
+        wait: true
+        instance_tags: "{{ item.tags }}"
+            #Name: "{{ app_instance1 }}"
+            #Tier: application
+            #Project: "{{ project_name }}"
+      with_items: "{{ instance_list }}"
+      register: newinstances
+    #- debug: msg="{{ newinstances }}"
+    #- debug: msg="{{ newinstances.results[0].instances[0].id }}"
+
+    - name: Create/Assign EIPs to EC2 Instances
+      ec2_eip:
+        region: "{{ project_region }}"
+        device_id: "{{ item.instances[0].id }}"
+        in_vpc: yes
+        reuse_existing_ip_allowed: yes
+        state: present
+      with_items: "{{ newinstances.results }}"
+      register: newinstances_eips
+    #- debug: msg="{{ newinstances_eips }}"
+
+    - name: Register New EIPs in Route53
+      route53:
+        command: create
+        zone: "{{ item.0.domain }}"
+        record: "{{ item.0.hostname }}.{{ item.0.domain }}"
+        type: A
+        value: "{{ item.1.public_ip }}"
+        overwrite: yes
+      with_together:
+        - "{{ instance_list }}"
+        - "{{ newinstances_eips.results }}"
+      register: route53out
+    #- debug: msg="{{ route53out }}"
+
+    - name: Register TLD in route53
+      route53:
+        command: create
+        zone: "{{ dns_tld }}"
+        record: "{{ dns_frontend }}"
+        type: CNAME
+        value: "{{ item.hostname }}.{{ dns_tld }}"
+        overwrite: yes
+      with_items: "{{ dns_backend_list }}"
+
+# THIS WAS TEST CODE, IT WORKS
+#    - name: Wait for SSH Available
+#      become: false
+#      local_action: wait_for host={{ app_instance1_hostname }}.{{ app_instance1_domain }}
+#                    port=22 state=started delay=5 timeout=300
+
+
+    - name: Waiting for Database to be Available - THIS CAN TAKE UP TO 10 MINUTES
+      local_action: rds command=facts region="{{ project_region }}"
+                    instance_name="{{ rds_instance_name }}"
+      register: rds
+    #- debug: var=rds
+      until: rds.instance.status == "available"
+      retries: 30
+      delay: 60
+
+    - name: Get Database Info
+      local_action: rds command=facts region="{{ project_region }}"
+                    instance_name="{{ rds_instance_name }}"
+      register: rds
+
+    #######################################################
+    # There is a bug in boto 2.20 included with ubuntu
+    # had to upgrade to 2.39 before this would work
+    #   pip install --upgrade --user boto
+    #######################################################
+    - name: Register Database CNAME in Route53
+      route53:
+        command: create
+        zone: "{{ rds_instance_domain }}"
+        record: "{{ rds_instance_hostname }}.{{ rds_instance_domain }}"
+        type: CNAME
+        value: "{{ rds.instance.endpoint }}"
+        overwrite: yes

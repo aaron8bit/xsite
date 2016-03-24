@@ -1,0 +1,4 @@
+---
+# tasks file for control
+- name: Install curl
+  apt: name=curl state=present update_cache=yes
