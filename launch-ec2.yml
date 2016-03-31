@@ -46,9 +46,9 @@
         user_data: |
                     #!/bin/bash
                     sudo hostname {{ item.hostname }}.{{ item.domain }}
-                    #sudo yum update -y
-                    #sleep 10
-                    #sudo shutdown -r now
+                    sudo yum update -y
+                    sleep 10
+                    sudo shutdown -r now
         wait: true
         instance_tags: "{{ item.tags }}"
             #Name: "{{ app_instance1 }}"
@@ -58,6 +58,9 @@
       register: newinstances
     #- debug: msg="{{ newinstances }}"
     #- debug: msg="{{ newinstances.results[0].instances[0].id }}"
+
+    - name: Create Ansible hosts File
+      template: src=templates/hosts.j2 dest=./hosts backup=yes force=yes
 
     - name: Create/Assign EIPs to EC2 Instances
       ec2_eip:
@@ -84,7 +87,7 @@
       register: route53out
     #- debug: msg="{{ route53out }}"
 
-    - name: Register TLD in route53
+    - name: Register Web Frontend in Route53
       route53:
         command: create
         zone: "{{ dns_tld }}"
