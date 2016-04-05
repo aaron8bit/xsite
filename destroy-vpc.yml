@@ -4,6 +4,9 @@
 
   tasks:
 
+    # THIS IS FAILING DUE TO UNNAMED DEPENDENCIES
+    # MANUAL DELETE WORKS FINE, IT USED TO WORK, NOT
+    # SURE HOW I BROKE IT
     - name: Destroy VPC
       ec2_vpc:
         region: "{{ project_region }}"

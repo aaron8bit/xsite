@@ -15,7 +15,7 @@
       local_action:
         module: ec2
         state: 'absent'
-        region: "{{ aja_region }}"
+        region: "{{ project_region }}"
         instance_ids: "{{ ansible_ec2_instance_id }}"
 
 
@@ -24,6 +24,6 @@
   tasks:
     - name: Terminate Database
       rds:
-        region: "{{ aja_region }}"
+        region: "{{ project_region }}"
         command: delete
-        instance_name: "{{ aja_rds_instance }}"
+        instance_name: "{{ rds_instance_name }}"
